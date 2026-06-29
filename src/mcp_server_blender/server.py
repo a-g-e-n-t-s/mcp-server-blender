@@ -161,18 +161,24 @@ def main():
     from .blender_manager import BlenderManager
 
     global _manager
-    _manager = BlenderManager()
 
-    async def _start_blender():
-        ok = await _manager.start_with_monitor()
-        if ok:
-            logger.info("Blender manager ready — starting MCP server (7 tools)")
-        else:
-            logger.warning("Blender not available — tools will return errors until Blender connects")
+    # BLENDER_EXTERNAL=1 skips headless launch — use when GUI Blender runs bootstrap.py manually
+    external = os.getenv("BLENDER_EXTERNAL", "").lower() in ("1", "true", "yes")
 
-    # Start Blender manager in background, then run MCP server
-    loop = asyncio.new_event_loop()
-    loop.run_until_complete(_start_blender())
+    if external:
+        logger.info("BLENDER_EXTERNAL set — skipping headless launch, expecting GUI Blender on port %d", SOCKET_PORT)
+    else:
+        _manager = BlenderManager()
+
+        async def _start_blender():
+            ok = await _manager.start_with_monitor()
+            if ok:
+                logger.info("Blender manager ready — starting MCP server (7 tools)")
+            else:
+                logger.warning("Blender not available — tools will return errors until Blender connects")
+
+        loop = asyncio.new_event_loop()
+        loop.run_until_complete(_start_blender())
 
     # Run as Streamable HTTP so broker can connect via http type, or stdio for local use
     # Supports both MCP_TRANSPORT and MCP_TRANSPORT_TYPE env vars for compatibility
