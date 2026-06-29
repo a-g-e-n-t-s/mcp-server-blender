@@ -21,17 +21,47 @@ logger = logging.getLogger("blender-manager")
 BOOTSTRAP_PATH = str(Path(__file__).parent / "bootstrap.py")
 
 
+def _find_blender_executable() -> str:
+    """Auto-discover Blender executable across platforms."""
+    env_path = os.getenv("BLENDER_EXECUTABLE")
+    if env_path and os.path.isfile(env_path):
+        return env_path
+
+    # Check if 'blender' is already on PATH
+    import shutil
+    if shutil.which("blender"):
+        return "blender"
+
+    # Windows: check common install locations
+    if sys.platform == "win32":
+        program_dirs = [
+            os.environ.get("PROGRAMFILES", r"C:\Program Files"),
+            os.environ.get("PROGRAMFILES(X86)", r"C:\Program Files (x86)"),
+        ]
+        for base in program_dirs:
+            bf_dir = Path(base) / "Blender Foundation"
+            if bf_dir.exists():
+                # Find the latest version directory
+                versions = sorted(bf_dir.iterdir(), reverse=True)
+                for v in versions:
+                    exe = v / "blender.exe"
+                    if exe.exists():
+                        return str(exe)
+
+    return "blender"  # fallback — will fail with FileNotFoundError if not found
+
+
 class BlenderManager:
     def __init__(
         self,
-        executable: str = "blender",
+        executable: str | None = None,
         socket_host: str = "127.0.0.1",
         socket_port: int = 9876,
         heartbeat_interval: float = 5.0,
         restart_delay: float = 3.0,
         max_restart_attempts: int = 5,
     ):
-        self.executable = executable
+        self.executable = executable or _find_blender_executable()
         self.socket_host = socket_host
         self.socket_port = socket_port
         self.heartbeat_interval = heartbeat_interval
