@@ -197,7 +197,8 @@ class BlenderSocketServer:
         return {"success": True, "material": mat_name, "object": obj_name}
 
     def _render(self, p):
-        output = p.get("output_path") or "/tmp/blender-renders/render.png"
+        import tempfile
+        output = p.get("output_path") or os.path.join(tempfile.gettempdir(), "blender-renders", "render.png")
         os.makedirs(os.path.dirname(output), exist_ok=True)
 
         scene = bpy.context.scene
@@ -235,7 +236,8 @@ class BlenderSocketServer:
             return {"success": False, "error": f"Unknown format: {fmt}. Supported: {', '.join(ext_map.keys())}"}
 
         if not output:
-            output = f"/tmp/blender-exports/export{ext}"
+            import tempfile
+            output = os.path.join(tempfile.gettempdir(), "blender-exports", f"export{ext}")
         os.makedirs(os.path.dirname(output), exist_ok=True)
 
         try:
@@ -262,12 +264,24 @@ class BlenderSocketServer:
     def _execute_python(self, p):
         code = p.get("code", "")
         local_vars = {}
+        import io
+        captured = io.StringIO()
+        old_stdout = sys.stdout
         try:
+            sys.stdout = captured
             exec(code, {"bpy": bpy, "__builtins__": __builtins__}, local_vars)
+            sys.stdout = old_stdout
             result = local_vars.get("result", None)
-            return {"success": True, "result": str(result) if result is not None else None}
+            stdout_output = captured.getvalue()
+            if result is not None:
+                return {"success": True, "result": str(result), "stdout": stdout_output}
+            elif stdout_output:
+                return {"success": True, "result": stdout_output}
+            else:
+                return {"success": True, "result": None}
         except Exception as e:
-            return {"success": False, "error": str(e)}
+            sys.stdout = old_stdout
+            return {"success": False, "error": str(e), "stdout": captured.getvalue()}
 
     def _get_scene_info(self, p):
         objects = []
@@ -299,18 +313,37 @@ class BlenderSocketServer:
 server = BlenderSocketServer()
 server.start()
 
-# Keep Blender alive — main thread processes command queue so bpy.ops works
-print("[bootstrap] Blender headless mode — processing commands on main thread...")
-try:
-    while server.running:
-        try:
-            command, result_queue = _command_queue.get(timeout=0.5)
-            cmd_name = command.get("command", "?")
-            print(f"[bootstrap] Main thread executing: {cmd_name}")
-            response = server.execute_command(command)
-            result_queue.put(response)
-        except queue.Empty:
-            continue
-except KeyboardInterrupt:
-    print("[bootstrap] Shutting down...")
-    server.stop()
+
+def _process_command_queue():
+    """Drain the command queue on the main thread (one command per tick)."""
+    try:
+        command, result_queue = _command_queue.get_nowait()
+        cmd_name = command.get("command", "?")
+        print(f"[bootstrap] Main thread executing: {cmd_name}")
+        response = server.execute_command(command)
+        result_queue.put(response)
+    except queue.Empty:
+        pass
+    return 0.05  # re-run every 50ms
+
+
+if bpy.app.background:
+    # Headless mode — block the main thread (no event loop to hook into)
+    print("[bootstrap] Blender headless mode — processing commands on main thread...")
+    try:
+        while server.running:
+            try:
+                command, result_queue = _command_queue.get(timeout=0.5)
+                cmd_name = command.get("command", "?")
+                print(f"[bootstrap] Main thread executing: {cmd_name}")
+                response = server.execute_command(command)
+                result_queue.put(response)
+            except queue.Empty:
+                continue
+    except KeyboardInterrupt:
+        print("[bootstrap] Shutting down...")
+        server.stop()
+else:
+    # GUI mode — use timer so Blender's event loop stays responsive
+    bpy.app.timers.register(_process_command_queue, first_interval=0.1)
+    print(f"[bootstrap] GUI mode — socket server on {HOST}:{PORT}, processing via timer")
