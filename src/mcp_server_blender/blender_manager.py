@@ -1,3 +1,7 @@
+# ----------------------------------------------------------------------------------------------------
+# blender_manager.py
+# ----------------------------------------------------------------------------------------------------
+
 """
 BlenderManager — launch, monitor, and auto-restart headless Blender.
 
@@ -6,6 +10,8 @@ Monitors health via socket heartbeat ping every N seconds.
 Auto-restarts within 5s on crash (up to max attempts).
 """
 
+# ----------------------------------------------------------------------------------------------------
+from pathlib import Path
 import asyncio
 import json
 import logging
@@ -14,15 +20,16 @@ import signal
 import socket
 import subprocess
 import sys
-from pathlib import Path
 
 logger = logging.getLogger("blender-manager")
 
 BOOTSTRAP_PATH = str(Path(__file__).parent / "bootstrap.py")
 
-
+# ----------------------------------------------------------------------------------------------------
 def _find_blender_executable() -> str:
-    """Auto-discover Blender executable across platforms."""
+    """
+    Auto-discover Blender executable across platforms.
+    """
     env_path = os.getenv("BLENDER_EXECUTABLE")
     if env_path and os.path.isfile(env_path):
         return env_path
@@ -50,7 +57,7 @@ def _find_blender_executable() -> str:
 
     return "blender"  # fallback — will fail with FileNotFoundError if not found
 
-
+# ----------------------------------------------------------------------------------------------------
 class BlenderManager:
     def __init__(
         self,
