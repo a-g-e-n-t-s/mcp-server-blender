@@ -247,3 +247,4 @@ packages/
 *.nupkg
 .playwright-mcp/
 .agent-quest/
+!.env.gui
