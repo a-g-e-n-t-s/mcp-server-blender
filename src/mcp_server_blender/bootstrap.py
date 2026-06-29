@@ -152,15 +152,27 @@ class BlenderSocketServer:
         if not op:
             return {"success": False, "error": f"Unknown type: {obj_type}. Supported: {', '.join(ops.keys())}"}
 
-        # bpy.ops mesh primitives don't accept scale — set location/rotation only, then scale the object
-        op(location=loc, rotation=rot)
+        # Use temp_override for Blender 4.x to provide valid context in timer callbacks
+        if hasattr(bpy.context, "temp_override"):
+            window = bpy.context.window_manager.windows[0]
+            screen = window.screen
+            area = next((a for a in screen.areas if a.type == 'VIEW_3D'), screen.areas[0])
+            region = next((r for r in area.regions if r.type == 'WINDOW'), area.regions[0])
+            with bpy.context.temp_override(window=window, area=area, region=region):
+                op(location=loc, rotation=rot)
+        else:
+            op(location=loc, rotation=rot)
+
         obj = bpy.context.active_object
-        obj.scale = scl
-        name = p.get("name")
-        if name:
-            obj.name = name
-        self._tag_redraw()
-        return {"success": True, "name": obj.name, "type": obj_type}
+        if obj:
+            obj.scale = scl
+            name = p.get("name")
+            if name:
+                obj.name = name
+            self._tag_redraw()
+            return {"success": True, "name": obj.name, "type": obj_type}
+        else:
+            return {"success": False, "error": "Object created but not found in context"}
 
     def _modify_object(self, p):
         name = p.get("name")
@@ -342,6 +354,9 @@ def _process_command_queue():
         result_queue.put(response)
     except queue.Empty:
         pass
+    except Exception as e:
+        print(f"[bootstrap] Timer error: {e}")
+        traceback.print_exc()
     return 0.05  # re-run every 50ms
 
 
@@ -363,5 +378,8 @@ if bpy.app.background:
         server.stop()
 else:
     # GUI mode — use timer so Blender's event loop stays responsive
-    bpy.app.timers.register(_process_command_queue, first_interval=0.1)
+    if bpy.app.timers.is_registered(_process_command_queue):
+        bpy.app.timers.unregister(_process_command_queue)
+    bpy.app.timers.register(_process_command_queue, first_interval=0.1, persistent=True)
     print(f"[bootstrap] GUI mode — socket server on {HOST}:{PORT}, processing via timer")
+    print(f"[bootstrap] Timer registered: {bpy.app.timers.is_registered(_process_command_queue)}")
