@@ -123,6 +123,17 @@ class BlenderSocketServer:
     # Command Implementations
     # ========================================================================
 
+    @staticmethod
+    def _tag_redraw():
+        """Force viewport redraw — needed when commands run from timer callbacks."""
+        try:
+            for area in bpy.context.screen.areas if bpy.context.screen else []:
+                if area.type == 'VIEW_3D':
+                    area.tag_redraw()
+            bpy.context.view_layer.update()
+        except Exception:
+            pass
+
     def _create_object(self, p):
         obj_type = p.get("type", "cube").lower()
         loc = tuple(p.get("location", [0, 0, 0]))
@@ -148,6 +159,7 @@ class BlenderSocketServer:
         name = p.get("name")
         if name:
             obj.name = name
+        self._tag_redraw()
         return {"success": True, "name": obj.name, "type": obj_type}
 
     def _modify_object(self, p):
@@ -171,6 +183,7 @@ class BlenderSocketServer:
                 if hasattr(mod, k):
                     setattr(mod, k, v)
 
+        self._tag_redraw()
         return {"success": True, "name": obj.name}
 
     def _set_material(self, p):
@@ -194,6 +207,7 @@ class BlenderSocketServer:
         else:
             obj.data.materials.append(mat)
 
+        self._tag_redraw()
         return {"success": True, "material": mat_name, "object": obj_name}
 
     def _render(self, p):
@@ -320,7 +334,11 @@ def _process_command_queue():
         command, result_queue = _command_queue.get_nowait()
         cmd_name = command.get("command", "?")
         print(f"[bootstrap] Main thread executing: {cmd_name}")
-        response = server.execute_command(command)
+        try:
+            response = server.execute_command(command)
+        except Exception as e:
+            traceback.print_exc()
+            response = {"success": False, "error": str(e)}
         result_queue.put(response)
     except queue.Empty:
         pass
