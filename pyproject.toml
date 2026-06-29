@@ -11,9 +11,26 @@ dependencies = [
 [project.scripts]
 mcp-server-blender = "mcp_server_blender.server:main"
 
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "pytest-cov>=5.0",
+]
+
 [build-system]
 requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.coverage.run]
+omit = [
+    "src/mcp_server_blender/bootstrap.py",
+    "src/mcp_server_blender/server.py",
+]
