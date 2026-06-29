@@ -1,3 +1,7 @@
+# ----------------------------------------------------------------------------------------------------
+# server.py
+# ----------------------------------------------------------------------------------------------------
+
 """
 mcp-server-blender — Entry point and main() function.
 
@@ -5,17 +9,17 @@ Tools are registered in the `tools/` package.
 Shared state (mcp instance, send_command, config) lives in `core.py`.
 """
 
+# ----------------------------------------------------------------------------------------------------
+from .core import mcp, SOCKET_HOST, SOCKET_PORT, BLENDER_EXTERNAL, _config, MCP_PORT
+from . import tools  # noqa: F401 — registers all @mcp.tool() decorators
+# ----------------------------------------------------------------------------------------------------
 import os
 import logging
 
-from .core import mcp, SOCKET_HOST, SOCKET_PORT, BLENDER_EXTERNAL, _config, MCP_PORT
-from . import tools  # noqa: F401 — registers all @mcp.tool() decorators
-
 logger = logging.getLogger("mcp-server-blender")
-
 _manager = None
 
-
+# ----------------------------------------------------------------------------------------------------
 def main():
     import asyncio
     from .blender_manager import BlenderManager
@@ -57,6 +61,6 @@ def main():
         logger.info("MCP server listening on http://0.0.0.0:%d/mcp", MCP_PORT)
     mcp.run(transport=transport)
 
-
+# ----------------------------------------------------------------------------------------------------
 if __name__ == "__main__":
     main()

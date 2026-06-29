@@ -1,3 +1,7 @@
+# ----------------------------------------------------------------------------------------------------
+# bootstrap.py
+# ----------------------------------------------------------------------------------------------------
+
 """
 Bootstrap script — runs inside headless Blender.
 
@@ -6,25 +10,26 @@ Sets up a TCP socket server that receives JSON commands and executes bpy operati
 Same socket protocol as the blender-mcp addon but without the UI panel.
 """
 
+# ----------------------------------------------------------------------------------------------------
 import bpy
 import json
-import socket
-import threading
-import traceback
-import sys
 import os
 import queue
+import socket
+import sys
+import threading
+import traceback
 
-HOST = os.getenv("BLENDER_SOCKET_HOST", "127.0.0.1")
-PORT = int(os.getenv("BLENDER_SOCKET_PORT", "9876"))
+SOCKET_HOST = os.getenv("BLENDER_SOCKET_HOST", "127.0.0.1")
+SOCKET_PORT = int(os.getenv("BLENDER_SOCKET_PORT", "9876"))
 
 # Main-thread command queue: socket threads put (command, response_queue) tuples here.
 # The main thread pops and executes them so bpy.ops calls don't deadlock.
 _command_queue = queue.Queue()
 
-
+# ----------------------------------------------------------------------------------------------------
 class BlenderSocketServer:
-    def __init__(self, host=HOST, port=PORT):
+    def __init__(self, host=SOCKET_HOST, port=SOCKET_PORT):
         self.host = host
         self.port = port
         self.running = False
@@ -381,5 +386,5 @@ else:
     if bpy.app.timers.is_registered(_process_command_queue):
         bpy.app.timers.unregister(_process_command_queue)
     bpy.app.timers.register(_process_command_queue, first_interval=0.1, persistent=True)
-    print(f"[bootstrap] GUI mode — socket server on {HOST}:{PORT}, processing via timer")
+    print(f"[bootstrap] GUI mode — socket server on {SOCKET_HOST}:{SOCKET_PORT}, processing via timer")
     print(f"[bootstrap] Timer registered: {bpy.app.timers.is_registered(_process_command_queue)}")

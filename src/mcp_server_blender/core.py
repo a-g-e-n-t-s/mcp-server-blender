@@ -1,11 +1,20 @@
-"""Shared MCP instance and Blender socket communication."""
+# ----------------------------------------------------------------------------------------------------
+# core.py
+# ----------------------------------------------------------------------------------------------------
 
+# ----------------------------------------------------------------------------------------------------
+"""
+Shared MCP instance and Blender socket communication.
+"""
+
+# ----------------------------------------------------------------------------------------------------
+from mcp.server.fastmcp import FastMCP
+from pathlib import Path
+# ----------------------------------------------------------------------------------------------------
 import json
+import logging
 import os
 import socket
-import logging
-from pathlib import Path
-from mcp.server.fastmcp import FastMCP
 
 try:
     import tomllib
@@ -23,14 +32,15 @@ with open(_config_path, "rb") as f:
 SOCKET_HOST = _config.get("SOCKET_HOST", "127.0.0.1")
 SOCKET_PORT = _config.get("SOCKET_PORT", 9876)
 BLENDER_EXTERNAL = _config.get("EXTERNAL", False)
-
 MCP_PORT = int(os.getenv("MCP_PORT", "3800"))
 
 mcp = FastMCP("mcp-server-blender", host="0.0.0.0", port=MCP_PORT)
 
-
+# ----------------------------------------------------------------------------------------------------
 def send_command(command: str, params: dict, timeout: float = 60.0) -> dict:
-    """Send a JSON command to the Blender addon socket server and return the result."""
+    """
+    Send a JSON command to the Blender addon socket server and return the result.
+    """
     logger.info("send_command: %s params=%s", command, json.dumps(params, default=str)[:200])
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
