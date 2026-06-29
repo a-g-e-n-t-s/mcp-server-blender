@@ -9,14 +9,26 @@ import json
 import os
 import socket
 import logging
+from pathlib import Path
 from mcp.server.fastmcp import FastMCP
 from typing import Optional, List
+
+try:
+    import tomllib
+except ModuleNotFoundError:
+    import tomli as tomllib
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("mcp-server-blender")
 
-SOCKET_HOST = "127.0.0.1"
-SOCKET_PORT = 9876
+# Load config.toml
+_config_path = Path(__file__).parent.parent.parent / "config.toml"
+with open(_config_path, "rb") as f:
+    _config = tomllib.load(f).get("blender", {})
+
+SOCKET_HOST = _config.get("SOCKET_HOST", "127.0.0.1")
+SOCKET_PORT = _config.get("SOCKET_PORT", 9876)
+BLENDER_EXTERNAL = _config.get("EXTERNAL", False)
 
 MCP_PORT = int(os.getenv("MCP_PORT", "3800"))
 
@@ -156,19 +168,168 @@ def blender_get_scene_info() -> str:
 
 _manager = None
 
+
+@mcp.tool()
+def blender_guide(topic: Optional[str] = None) -> str:
+    """Get guidance on how to use mcp-server-blender tools effectively. Topics: 'overview', 'materials', 'animation', 'modifiers', 'scripting', 'workflow'."""
+    guides = {
+        "overview": """# mcp-server-blender Tool Guide
+
+## Available Tools (use these first — less error-prone than raw Python):
+- blender_create_object: Create primitives (cube, sphere, cylinder, plane, cone, torus)
+- blender_modify_object: Move, rotate, scale, add modifiers (subdivision, solidify, mirror, bevel)
+- blender_set_material: PBR materials with color, roughness, metallic
+- blender_render: Render scene to PNG (CYCLES CPU recommended)
+- blender_export: Export to glTF/FBX/OBJ/STL
+- blender_get_scene_info: List all objects, transforms, materials
+- blender_execute_python: Escape hatch for anything not covered above
+
+## Workflow:
+1. Use blender_get_scene_info to understand current state
+2. Use dedicated tools for common operations
+3. Fall back to blender_execute_python for complex operations
+4. Always set `result = <value>` in execute_python to return data""",
+
+        "materials": """# Materials Guide
+
+## Simple PBR (use blender_set_material):
+- color: [R, G, B, A] in 0-1 range
+- roughness: 0.0 (mirror) to 1.0 (matte)
+- metallic: 0.0 (dielectric) to 1.0 (metal)
+
+## Complex materials (use blender_execute_python):
+```python
+import bpy
+mat = bpy.data.materials.new("MyMaterial")
+mat.use_nodes = True
+tree = mat.node_tree
+bsdf = tree.nodes["Principled BSDF"]
+
+# Add texture
+tex = tree.nodes.new("ShaderNodeTexNoise")
+tree.links.new(tex.outputs["Color"], bsdf.inputs["Base Color"])
+
+# Assign to object
+obj = bpy.data.objects["Cube"]
+obj.data.materials.append(mat)
+result = f"Material '{mat.name}' created and assigned"
+```""",
+
+        "animation": """# Animation Guide (use blender_execute_python)
+
+```python
+import bpy
+obj = bpy.data.objects["Cube"]
+
+# Keyframe at frame 1
+obj.location = (0, 0, 0)
+obj.keyframe_insert(data_path="location", frame=1)
+
+# Keyframe at frame 60
+obj.location = (5, 0, 3)
+obj.keyframe_insert(data_path="location", frame=60)
+
+# Set frame range
+bpy.context.scene.frame_start = 1
+bpy.context.scene.frame_end = 60
+result = "Animation: Cube moves from origin to (5,0,3) over 60 frames"
+```""",
+
+        "modifiers": """# Modifiers Guide
+
+## Via blender_modify_object (simple cases):
+- modifier: "SUBDIVISION" with modifier_params: {"levels": 2}
+- modifier: "SOLIDIFY" with modifier_params: {"thickness": 0.1}
+- modifier: "BEVEL" with modifier_params: {"width": 0.05, "segments": 3}
+
+## Via blender_execute_python (complex):
+```python
+import bpy
+obj = bpy.data.objects["Cube"]
+
+# Array modifier
+arr = obj.modifiers.new("Array", "ARRAY")
+arr.count = 5
+arr.relative_offset_displace = (1.2, 0, 0)
+
+# Boolean modifier
+bool_mod = obj.modifiers.new("Boolean", "BOOLEAN")
+bool_mod.operation = "DIFFERENCE"
+bool_mod.object = bpy.data.objects["Sphere"]
+result = "Modifiers added"
+```""",
+
+        "scripting": """# blender_execute_python Tips
+
+## Return data: always set `result = <value>`
+```python
+result = len(bpy.data.objects)  # returns "5"
+```
+
+## Print also works (captured as stdout):
+```python
+for obj in bpy.data.objects:
+    print(f"{obj.name}: {obj.type}")
+# Output returned as the result string
+```
+
+## Access scene state:
+```python
+import bpy, json
+scene = bpy.context.scene
+result = json.dumps({
+    "fps": scene.render.fps,
+    "frame": scene.frame_current,
+    "engine": scene.render.engine,
+    "resolution": [scene.render.resolution_x, scene.render.resolution_y]
+})
+```""",
+
+        "workflow": """# Recommended Workflow
+
+1. **Inspect**: blender_get_scene_info → understand what exists
+2. **Build**: blender_create_object → place primitives
+3. **Transform**: blender_modify_object → position, scale, modifiers
+4. **Material**: blender_set_material → apply PBR look
+5. **Complex**: blender_execute_python → shaders, animation, constraints
+6. **Render**: blender_render → produce image
+7. **Export**: blender_export → save as glTF/FBX/OBJ/STL
+
+## Tips:
+- Object names auto-increment (Cube, Cube.001, Cube.002)
+- Use get_scene_info to find exact names before modifying
+- Render uses CYCLES (CPU) by default — set samples low (32-64) for previews
+- For GUI mode: objects appear in viewport immediately after creation"""
+    }
+
+    if topic and topic.lower() in guides:
+        return guides[topic.lower()]
+
+    if topic:
+        return f"Unknown topic '{topic}'. Available: {', '.join(guides.keys())}"
+
+    return guides["overview"]
+
 def main():
     import asyncio
     from .blender_manager import BlenderManager
 
     global _manager
 
-    # BLENDER_EXTERNAL=1 skips headless launch — use when GUI Blender runs bootstrap.py manually
-    external = os.getenv("BLENDER_EXTERNAL", "").lower() in ("1", "true", "yes")
+    # EXTERNAL in config.toml (or BLENDER_EXTERNAL env override) skips headless launch
+    external = BLENDER_EXTERNAL or os.getenv("BLENDER_EXTERNAL", "").lower() in ("1", "true", "yes")
 
     if external:
         logger.info("BLENDER_EXTERNAL set — skipping headless launch, expecting GUI Blender on port %d", SOCKET_PORT)
     else:
-        _manager = BlenderManager()
+        _manager = BlenderManager(
+            executable=_config.get("EXECUTABLE") or None,
+            socket_host=SOCKET_HOST,
+            socket_port=SOCKET_PORT,
+            heartbeat_interval=_config.get("HEARTBEAT_INTERVAL_S", 5.0),
+            restart_delay=_config.get("RESTART_DELAY_S", 3.0),
+            max_restart_attempts=_config.get("MAX_RESTART_ATTEMPTS", 5),
+        )
 
         async def _start_blender():
             ok = await _manager.start_with_monitor()
