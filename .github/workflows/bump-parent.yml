@@ -5,7 +5,11 @@ on:
     branches: [main]
 
 jobs:
+  test:
+    uses: ./.github/workflows/test.yml
+
   bump:
+    needs: test
     uses: a-g-e-n-t-s/AGENTS/.github/workflows/bump-submodule.yml@main
     with:
       submodule-path: mcp-servers/mcp-server-blender
